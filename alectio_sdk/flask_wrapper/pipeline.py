@@ -450,6 +450,9 @@ class Pipeline(object):
             confusion_matrix = sklearn.metrics.confusion_matrix(
                 ground_truth, predictions
             )
+            num_queried_per_class = {	
+                k: v for k, v in enumerate(confusion_matrix.sum(axis=1))	
+            }
             acc_per_class = {
                 k: v.round(3)
                 for k, v in enumerate(
@@ -477,6 +480,7 @@ class Pipeline(object):
                 "confusion_matrix": confusion_matrix.tolist(),
                 "acc_per_class": acc_per_class,
                 "label_disagreement": label_disagreement,
+                "num_queried_per_class": num_queried_per_class
             }
 
         # save metrics to S3
@@ -484,6 +488,20 @@ class Pipeline(object):
         self.client.multi_part_upload_with_s3(
             metrics, self.bucket_name, object_key, "pickle"
         )
+
+        # also write the num querried per class to the insights file
+        insights_object_key = os.path.join(
+            self.expt_dir, "insights_{}.pkl".format(self.cur_loop)
+        )
+
+        insight_object = self.client.read(self.bucket_name, object_key=insights_object_key, file_format="pickle")
+        insight_object["num_queried_per_class"] = num_queried_per_class
+
+
+        self.client.multi_part_upload_with_s3(
+            insight_object, self.bucket_name, insights_object_key, "pickle"
+        )
+
         if "onprem" in self.args and not self.args["onprem"]:
             demometricsobject_key = os.path.join(
                 self.demoexpt_dir, "metrics_{}.pkl".format(self.cur_loop)
